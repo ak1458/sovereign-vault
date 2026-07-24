@@ -1,47 +1,47 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isPasskeySupported } from '../../../lib/passkey'
 import {
-  isPasskeyProtectionEnabled,
+  getVaultAuthMode,
+  isVaultProtectionEnabled,
   setupPasskeyProtection,
+  setupPinProtection,
   unlockVaultWithPasskey,
+  unlockVaultWithPin,
 } from '../vault.service'
 
 const AUTO_LOCK_TIMEOUT_MS = 3 * 60 * 1000
-const DEV_MODE_KEY_STORAGE_KEY = 'sv_dev_mode'
 
-type VaultSessionState =
+export type VaultSessionState =
   | 'checking'
   | 'locked'
   | 'unlocking'
   | 'setting-up'
   | 'unlocked'
 
-interface UseVaultSessionResult {
+export interface UseVaultSessionResult {
   sessionKey: CryptoKey | null
   sessionState: VaultSessionState
   autoLockTimeoutMs: number
-  passkeyConfigured: boolean
+  authConfigured: boolean
+  authMode: 'passkey' | 'pin' | 'none'
   passkeySupported: boolean
   lock: () => void
   setupPasskey: () => Promise<void>
-  unlock: () => Promise<void>
+  setupPin: (pin: string) => Promise<void>
+  unlockPasskey: () => Promise<void>
+  unlockPin: (pin: string) => Promise<void>
+  // Backward compatibility alias methods
+  passkeyConfigured: boolean
+  unlock: (pin?: string) => Promise<void>
   forceDevMode: () => Promise<CryptoKey>
-}
-
-async function generateDevModeKey(): Promise<CryptoKey> {
-  return crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['encrypt', 'decrypt']
-  )
 }
 
 export function useVaultSession(): UseVaultSessionResult {
   const [sessionKey, setSessionKey] = useState<CryptoKey | null>(null)
   const [sessionState, setSessionState] = useState<VaultSessionState>('checking')
-  const [passkeyConfigured, setPasskeyConfigured] = useState(false)
+  const [authConfigured, setAuthConfigured] = useState(false)
+  const [authMode, setAuthMode] = useState<'passkey' | 'pin' | 'none'>('none')
   const [passkeySupported, setPasskeySupported] = useState(true)
-  const [isDevMode, setIsDevMode] = useState(false)
   const lockTimerRef = useRef<number | null>(null)
 
   const clearTimer = useCallback(() => {
@@ -68,33 +68,27 @@ export function useVaultSession(): UseVaultSessionResult {
     }, AUTO_LOCK_TIMEOUT_MS)
   }, [clearTimer, lock, sessionKey])
 
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      const supported = await isPasskeySupported()
+      const configured = await isVaultProtectionEnabled()
+      const mode = await getVaultAuthMode()
+
+      setPasskeySupported(supported)
+      setAuthConfigured(configured)
+      setAuthMode(mode)
+      setSessionState('locked')
+    } catch {
+      setSessionState('locked')
+    }
+  }, [])
+
   useEffect(() => {
     let isMounted = true
 
     const initialize = async () => {
-      const supported = await isPasskeySupported()
-
-      // Check for dev mode override
-      const devModeEnabled = import.meta.env.DEV && localStorage.getItem(DEV_MODE_KEY_STORAGE_KEY) === 'enabled'
-
-      if (devModeEnabled) {
-        if (!isMounted) return
-        setIsDevMode(true)
-        setPasskeySupported(false)
-        setPasskeyConfigured(true) // Pretend configured
-        setSessionState('locked')
-        return
-      }
-
-      const configured = supported ? await isPasskeyProtectionEnabled() : false
-
-      if (!isMounted) {
-        return
-      }
-
-      setPasskeySupported(supported)
-      setPasskeyConfigured(configured)
-      setSessionState('locked')
+      await checkAuthStatus()
+      if (!isMounted) return
     }
 
     void initialize()
@@ -102,7 +96,7 @@ export function useVaultSession(): UseVaultSessionResult {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [checkAuthStatus])
 
   useEffect(() => {
     if (!sessionKey) {
@@ -137,33 +131,12 @@ export function useVaultSession(): UseVaultSessionResult {
       return
     }
 
-    // Dev mode: create mock key
-    if (import.meta.env.DEV && !passkeySupported) {
-      setSessionState('setting-up')
-      try {
-        const key = await generateDevModeKey()
-        localStorage.setItem(DEV_MODE_KEY_STORAGE_KEY, 'enabled')
-        setIsDevMode(true)
-        setPasskeyConfigured(true)
-        setSessionKey(key)
-        setSessionState('unlocked')
-        return
-      } catch (error) {
-        setSessionKey(null)
-        setSessionState('locked')
-        throw error
-      }
-    }
-
-    if (!passkeySupported) {
-      return
-    }
-
     setSessionState('setting-up')
 
     try {
       const key = await setupPasskeyProtection()
-      setPasskeyConfigured(true)
+      setAuthConfigured(true)
+      setAuthMode('passkey')
       setSessionKey(key)
       setSessionState('unlocked')
     } catch (error) {
@@ -171,33 +144,30 @@ export function useVaultSession(): UseVaultSessionResult {
       setSessionState('locked')
       throw error
     }
-  }, [passkeySupported, sessionState])
+  }, [sessionState])
 
-  const unlock = useCallback(async () => {
-    if (
-      !passkeyConfigured ||
-      sessionState === 'unlocking' ||
-      sessionState === 'setting-up'
-    ) {
+  const setupPin = useCallback(async (pin: string) => {
+    if (sessionState === 'setting-up') {
       return
     }
 
-    // Dev mode: create new mock key
-    if (isDevMode) {
-      setSessionState('unlocking')
-      try {
-        const key = await generateDevModeKey()
-        setSessionKey(key)
-        setSessionState('unlocked')
-        return
-      } catch (error) {
-        setSessionKey(null)
-        setSessionState('locked')
-        throw error
-      }
-    }
+    setSessionState('setting-up')
 
-    if (!passkeySupported) {
+    try {
+      const key = await setupPinProtection(pin)
+      setAuthConfigured(true)
+      setAuthMode('pin')
+      setSessionKey(key)
+      setSessionState('unlocked')
+    } catch (error) {
+      setSessionKey(null)
+      setSessionState('locked')
+      throw error
+    }
+  }, [sessionState])
+
+  const unlockPasskey = useCallback(async () => {
+    if (sessionState === 'unlocking' || sessionState === 'setting-up') {
       return
     }
 
@@ -212,23 +182,19 @@ export function useVaultSession(): UseVaultSessionResult {
       setSessionState('locked')
       throw error
     }
-  }, [isDevMode, passkeyConfigured, passkeySupported, sessionState])
+  }, [sessionState])
 
-  const forceDevMode = useCallback(async () => {
-    if (sessionState === 'setting-up' || sessionState === 'unlocked') {
-      throw new Error('Session is already active or setting up')
+  const unlockPin = useCallback(async (pin: string) => {
+    if (sessionState === 'unlocking' || sessionState === 'setting-up') {
+      return
     }
 
-    setSessionState('setting-up')
+    setSessionState('unlocking')
+
     try {
-      const key = await generateDevModeKey()
-      localStorage.setItem(DEV_MODE_KEY_STORAGE_KEY, 'enabled')
-      setIsDevMode(true)
-      setPasskeyConfigured(true)
-      setPasskeySupported(false)
+      const key = await unlockVaultWithPin(pin)
       setSessionKey(key)
       setSessionState('unlocked')
-      return key
     } catch (error) {
       setSessionKey(null)
       setSessionState('locked')
@@ -236,14 +202,39 @@ export function useVaultSession(): UseVaultSessionResult {
     }
   }, [sessionState])
 
+  const unlock = useCallback(async (pin?: string) => {
+    if (pin) {
+      await unlockPin(pin)
+    } else {
+      await unlockPasskey()
+    }
+  }, [unlockPasskey, unlockPin])
+
+  const forceDevMode = useCallback(async () => {
+    // Legacy fallback: sets up PIN "0000" cleanly with real encryption
+    return setupPinProtection('0000').then((key) => {
+      setAuthConfigured(true)
+      setAuthMode('pin')
+      setSessionKey(key)
+      setSessionState('unlocked')
+      return key
+    })
+  }, [])
+
   return {
     sessionKey,
     sessionState,
     autoLockTimeoutMs: AUTO_LOCK_TIMEOUT_MS,
-    passkeyConfigured,
+    authConfigured,
+    authMode,
     passkeySupported,
     lock,
     setupPasskey,
+    setupPin,
+    unlockPasskey,
+    unlockPin,
+    // Aliases
+    passkeyConfigured: authConfigured,
     unlock,
     forceDevMode,
   }

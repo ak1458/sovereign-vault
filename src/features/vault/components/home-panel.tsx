@@ -55,16 +55,16 @@ export function HomePanel({
 }: HomePanelProps) {
   return (
     <section className="sv-screen">
-      {/* Header - EXACTLY 56px */}
+      {/* Header - Universal 56px Bar */}
       <header className="sv-sticky">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-2xl text-[var(--accent)]">
               shield_person
             </span>
             <h1 className="sv-title">Sovereign Vault</h1>
           </div>
-          <button className="sv-icon-btn" onClick={onToggleTheme}>
+          <button className="sv-icon-btn" onClick={onToggleTheme} title="Toggle Theme" type="button">
             <span className="material-symbols-outlined">
               {themeMode === 'dark' ? 'light_mode' : 'dark_mode'}
             </span>
@@ -73,7 +73,7 @@ export function HomePanel({
       </header>
 
       {/* Content */}
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-4">
         {/* Search Bar - 44px height */}
         <button
           className="sv-input flex items-center gap-3 text-left"

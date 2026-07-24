@@ -1,5 +1,6 @@
 import type { ChangeEvent, RefObject } from 'react'
 import type { BackupSnapshotSummary } from '../../backup/backup.service'
+import { db } from '../../../lib/db'
 
 type ThemeMode = 'light' | 'dark'
 
@@ -67,18 +68,38 @@ export function SettingsPanel({
   onRestoreSnapshot,
   onImportFile,
 }: SettingsPanelProps) {
+  const handleWipeVaultData = async () => {
+    const confirmText = prompt(
+      'DANGER ZONE: Type "WIPE" to permanently erase all encrypted notes, passkeys, and local database storage from this device.',
+    )
+    if (confirmText !== 'WIPE') {
+      return
+    }
+
+    try {
+      await db.vaultItems.clear()
+      await db.vaultSecrets.clear()
+      await db.vaultEmbeddings.clear()
+      await db.backupSnapshots.clear()
+      window.localStorage.clear()
+      window.location.reload()
+    } catch {
+      alert('Failed to wipe database.')
+    }
+  }
+
   return (
     <section className="sv-screen">
-      {/* Header - EXACTLY 56px */}
+      {/* Header - Universal 56px Bar */}
       <header className="sv-sticky">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-2xl text-[var(--accent)]">
               settings
             </span>
             <h1 className="sv-title">Settings</h1>
           </div>
-          <button className="sv-icon-btn" onClick={onToggleTheme}>
+          <button className="sv-icon-btn" onClick={onToggleTheme} title="Toggle Theme" type="button">
             <span className="material-symbols-outlined">
               {themeMode === 'dark' ? 'light_mode' : 'dark_mode'}
             </span>
@@ -211,6 +232,21 @@ export function SettingsPanel({
               <span className="material-symbols-outlined text-[var(--text-secondary)]">
                 lock
               </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div>
+          <h2 className="sv-caption uppercase tracking-wider mb-2 px-1 text-red-400 font-bold">Danger Zone</h2>
+          <div className="sv-card border border-red-500/40 bg-red-500/5">
+            <button
+              className="sv-row w-full text-left text-red-400 font-semibold hover:bg-red-500/10 transition-colors rounded-2xl"
+              onClick={() => void handleWipeVaultData()}
+              type="button"
+            >
+              <span className="text-xs">Wipe Vault & Reset Storage</span>
+              <span className="material-symbols-outlined text-red-400 text-lg">delete</span>
             </button>
           </div>
         </div>

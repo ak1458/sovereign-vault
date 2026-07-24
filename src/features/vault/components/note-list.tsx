@@ -60,18 +60,19 @@ export function NoteList(props: NoteListProps) {
 
   return (
     <section className="sv-screen">
-      {/* Header - EXACTLY 56px */}
+      {/* Header - Universal 56px Bar */}
       <header className="sv-sticky">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-2xl text-[var(--accent)]">
               search
             </span>
             <h1 className="sv-title">Search</h1>
           </div>
           <button
-            className="sv-caption text-[var(--accent)] font-medium"
+            className="sv-btn-ghost text-xs text-[var(--accent)] font-medium hover:underline px-2 py-1"
             onClick={() => onSearchChange('')}
+            type="button"
           >
             Clear
           </button>

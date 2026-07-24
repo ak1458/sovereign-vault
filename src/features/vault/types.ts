@@ -30,7 +30,8 @@ export interface VaultEncryptedItem {
 
 export interface VaultSecretRecord {
   id: string
-  credentialId: Uint8Array
+  authMode?: 'passkey' | 'pin'
+  credentialId?: Uint8Array
   wrapSalt: Uint8Array
   wrappedVaultKey: Uint8Array
   wrappedVaultKeyIv: Uint8Array

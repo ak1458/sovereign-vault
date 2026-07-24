@@ -176,7 +176,7 @@ const serializeVaultItem = (
 const serializeVaultSecret = (secret: VaultSecretRecord): SerializedVaultSecret => {
   return {
     id: secret.id,
-    credentialId: bytesToBase64(toUint8Array(secret.credentialId)),
+    credentialId: secret.credentialId ? bytesToBase64(toUint8Array(secret.credentialId)) : '',
     wrapSalt: bytesToBase64(toUint8Array(secret.wrapSalt)),
     wrappedVaultKey: bytesToBase64(toUint8Array(secret.wrappedVaultKey)),
     wrappedVaultKeyIv: bytesToBase64(toUint8Array(secret.wrappedVaultKeyIv)),

@@ -3,13 +3,18 @@ import {
   useMemo,
   useState,
   type FormEvent,
-  type MouseEvent,
 } from 'react'
 import {
   VAULT_CATEGORIES,
   getVaultCategoryLabel,
   type VaultCategory,
 } from '../../../core/vault-category'
+import { copySecureToClipboard } from '../../../lib/clipboard'
+
+import {
+  evaluatePasswordStrength,
+  generateSecurePassword,
+} from '../../../lib/password-generator'
 import type { VaultItem, VaultItemDraft } from '../types'
 
 const detailDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -57,25 +62,17 @@ export function NoteEditor({
   onSave,
   onSummarize,
 }: NoteEditorProps) {
-  const summaryPoints = useMemo(() => {
-    if (!summaryText) {
-      return []
-    }
-
-    const segments = summaryText
-      .split(/[\n.]+/g)
-      .map((segment) => segment.trim())
-      .filter((segment) => segment.length > 0)
-
-    return segments.slice(0, 4)
-  }, [summaryText])
-
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [category, setCategory] = useState<VaultCategory>('note')
   const [tagInput, setTagInput] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  
+  // Category-specific UI states
+  const [showPassword, setShowPassword] = useState(false)
+  const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [copyNotification, setCopyNotification] = useState<string | null>(null)
 
   useEffect(() => {
     if (!note) {
@@ -90,7 +87,32 @@ export function NoteEditor({
     setTitle(note.title)
     setContent(note.content)
     setTagInput(tagsToInput(note.tags))
+    setShowPassword(false)
+    setIsPreviewMode(false)
   }, [note])
+
+  const summaryPoints = useMemo(() => {
+    if (!summaryText) {
+      return []
+    }
+
+    const segments = summaryText
+      .split(/[\n.]+/g)
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0)
+
+    return segments.slice(0, 4)
+  }, [summaryText])
+
+  const passwordStrength = useMemo(() => {
+    if (category !== 'password') return null
+    return evaluatePasswordStrength(content)
+  }, [category, content])
+
+  const wordCount = useMemo(() => {
+    if (!content.trim()) return 0
+    return content.trim().split(/\s+/).length
+  }, [content])
 
   const isDirty = useMemo(() => {
     if (!note) {
@@ -98,17 +120,17 @@ export function NoteEditor({
     }
 
     return (
-      category !== note.category ||
-      title !== note.title ||
-      content !== note.content ||
-      tagInput !== tagsToInput(note.tags)
+      note.category !== category ||
+      note.title !== title ||
+      note.content !== content ||
+      tagsToInput(note.tags) !== tagInput
     )
   }, [category, content, note, tagInput, title])
 
-  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const handleSave = async (event?: FormEvent) => {
+    event?.preventDefault()
 
-    if (!note || isSaving || !isDirty) {
+    if (!note || !isDirty || isSaving || isDeleting) {
       return
     }
 
@@ -126,15 +148,13 @@ export function NoteEditor({
     }
   }
 
-  const handleDelete = async (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-
-    if (!note || isDeleting) {
+  const handleDelete = async () => {
+    if (!note || isSaving || isDeleting) {
       return
     }
 
-    const shouldDelete = window.confirm('Delete this note? This cannot be undone.')
-    if (!shouldDelete) {
+    const confirmed = window.confirm(`Permanently delete "${note.title}" from your encrypted vault?`)
+    if (!confirmed) {
       return
     }
 
@@ -147,205 +167,288 @@ export function NoteEditor({
     }
   }
 
-  const handleSummarize = async (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
+  const handleGeneratePassword = () => {
+    const newPwd = generateSecurePassword({ length: 18 })
+    setContent(newPwd)
+    setShowPassword(true)
+  }
 
-    if (!note || !onSummarize || isSummarizing || !summaryEnabled) {
-      return
+  const handleCopySecret = async (secretText: string, label: string) => {
+    const result = await copySecureToClipboard(secretText, 30_000)
+    if (result.success) {
+      setCopyNotification(`${label} copied! Auto-clearing clipboard in ${result.autoClearSec}s.`)
+      setTimeout(() => setCopyNotification(null), 4000)
     }
-
-    await onSummarize(note)
   }
 
   if (!note) {
     return (
-      <section className="sv-card flex h-full min-h-[480px] items-center justify-center p-10">
-        <div className="max-w-sm text-center">
-          <h2 className="mb-2 text-lg font-semibold text-[var(--vault-text)]">
-            No note selected
-          </h2>
-          <p className="text-sm text-[var(--vault-subtext)]">
-            Create a note from the sidebar to start building your vault.
-          </p>
-        </div>
-      </section>
+      <div className="flex h-full items-center justify-center p-6 text-center text-[var(--vault-subtext)]">
+        Select an item to view or edit.
+      </div>
     )
   }
 
   return (
-    <section className="relative flex h-full flex-col overflow-hidden bg-[var(--vault-surface)]">
-      <form className="flex h-full min-h-[480px] flex-col" onSubmit={handleSave}>
-        <header className="sv-sticky px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
-              {onBack && (
-                <button
-                  className="sv-icon-btn"
-                  onClick={onBack}
-                  type="button"
-                >
-                  <span className="material-symbols-outlined text-[var(--vault-accent)]">
-                    arrow_back_ios_new
-                  </span>
-                </button>
-              )}
-            </div>
-            <input
-              className="w-full max-w-[220px] border-none bg-transparent text-center text-lg font-bold tracking-tight text-[var(--vault-text)] outline-none"
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Untitled"
-              type="text"
-              value={title}
-            />
-            <div className="flex items-center gap-1">
-              <button
-                className="sv-icon-btn"
-                disabled={isDeleting}
-                onClick={handleDelete}
-                type="button"
-              >
-                <span className="material-symbols-outlined text-[var(--vault-danger)]">
-                  delete
-                </span>
-              </button>
-              <button className="sv-icon-btn" disabled={!isDirty || isSaving} type="submit">
-                <span className="material-symbols-outlined text-[var(--vault-accent)]">
-                  save
-                </span>
-              </button>
-            </div>
-          </div>
-          <div className="mt-2 text-center text-xs text-[var(--vault-subtext)]">
-            Last updated {detailDateFormatter.format(note.updatedAt)}
-          </div>
-        </header>
+    <div className="flex h-full flex-col overflow-y-auto bg-[var(--vault-bg)] px-4 py-6">
+      {/* Top Action Bar */}
+      <div className="mb-4 flex items-center justify-between">
+        <button
+          className="flex items-center gap-1.5 text-xs font-semibold text-[var(--vault-subtext)] transition-colors hover:text-[var(--vault-text)]"
+          onClick={onBack}
+          type="button"
+        >
+          <span className="material-symbols-outlined text-base">arrow_back</span>
+          <span>Back</span>
+        </button>
 
-        <main className="sv-screen px-5 pb-[270px] pt-4">
-          <div className="sv-card mb-4 p-3">
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                className="sv-input py-2 text-sm"
-                onChange={(event) => setCategory(event.target.value as VaultCategory)}
-                value={category}
-              >
-                {VAULT_CATEGORIES.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {getVaultCategoryLabel(entry)}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="sv-input py-2 text-sm"
-                onChange={(event) => setTagInput(event.target.value)}
-                placeholder="tags, comma separated"
-                type="text"
-                value={tagInput}
-              />
-            </div>
-          </div>
-
-          <textarea
-            className="sv-input min-h-[320px] resize-none border-none bg-transparent px-0 py-0 text-[15px] leading-7 shadow-none focus:shadow-none sm:min-h-[420px]"
-            onChange={(event) => setContent(event.target.value)}
-            placeholder="Write your secure note here..."
-            value={content}
-            aria-label="Note content"
-          />
-        </main>
-
-        <div className="pointer-events-none absolute bottom-[228px] left-0 right-0 h-16 bg-gradient-to-t from-[var(--vault-surface)] via-[var(--vault-surface)]/80 to-transparent" />
-
-        <div className="absolute bottom-0 left-0 right-0 border-t border-[var(--vault-border)] bg-[var(--vault-card)]">
-          <div className="flex justify-center py-2">
-            <div className="h-1.5 w-10 rounded-full bg-[var(--vault-border)]" />
-          </div>
-
-          <div className="flex items-center justify-between px-5 pb-3">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[var(--vault-accent)]">
-                auto_awesome
-              </span>
-              <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--vault-text)]">
-                AI Insights
-              </h3>
-            </div>
-            {summaryEnabled && (
-              <button
-                className="sv-btn-secondary px-3 py-1 text-[11px]"
-                disabled={isSummarizing}
-                onClick={handleSummarize}
-                type="button"
-              >
-                {isSummarizing ? 'Summarizing...' : 'Refresh'}
-              </button>
-            )}
-          </div>
-
-          <div className="px-5 pb-4">
-            {summaryEnabled ? (
-              <>
-                {summaryPoints.length > 0 ? (
-                  <div className="space-y-2.5">
-                    {summaryPoints.map((point) => (
-                      <div className="flex gap-2" key={point}>
-                        <span className="material-symbols-outlined mt-0.5 text-base text-[var(--vault-accent)]/60">
-                          adjust
-                        </span>
-                        <p className="text-xs leading-relaxed text-[var(--vault-subtext)]">
-                          {point}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-[var(--vault-subtext)]">
-                    Generate AI summary to view quick insights for this note.
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="text-xs text-[var(--vault-subtext)]">
-                Enable AI summary in Settings to generate note insights.
-              </p>
-            )}
-
-            {summaryEnabled && summaryText && (
-              <button
-                className="sv-btn-primary mt-4 w-full py-3 text-sm"
-                onClick={async (event) => {
-                  event.preventDefault()
-                  try {
-                    await navigator.clipboard.writeText(summaryText)
-                  } catch {
-                    // Ignore clipboard failures in non-secure preview contexts.
-                  }
-                }}
-                type="button"
-              >
-                Copy Summary
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 border-t border-[var(--vault-border)] px-4 pb-4 pt-3">
+        <div className="flex items-center gap-2">
+          {summaryEnabled && onSummarize && (
             <button
-              className="sv-btn-secondary py-2.5 text-sm"
-              disabled={isDeleting}
-              onClick={handleDelete}
+              className="sv-btn-secondary py-1.5 px-3 text-xs"
+              disabled={isSummarizing || isSaving}
+              onClick={() => onSummarize(note)}
               type="button"
             >
-              {isDeleting ? 'Deleting...' : 'Delete'}
+              {isSummarizing ? 'Summarizing...' : 'AI Summary'}
             </button>
+          )}
+
+          <button
+            className="sv-btn-primary py-1.5 px-4 text-xs disabled:opacity-50"
+            disabled={!isDirty || isSaving || isDeleting}
+            onClick={() => void handleSave()}
+            type="button"
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+
+          <button
+            className="p-1.5 text-[var(--vault-subtext)] hover:text-red-400 transition-colors"
+            disabled={isSaving || isDeleting}
+            onClick={() => void handleDelete()}
+            title="Delete Item"
+            type="button"
+          >
+            <span className="material-symbols-outlined text-xl">delete</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Copy notification toast */}
+      {copyNotification && (
+        <div className="mb-3 rounded-lg bg-indigo-500/20 border border-indigo-500/30 px-3 py-2 text-xs text-indigo-300 text-center animate-fade-in">
+          {copyNotification}
+        </div>
+      )}
+
+      {/* Metadata Header */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] text-[var(--vault-subtext)]">
+        <span className="rounded-md bg-[var(--vault-card-bg)] px-2 py-0.5 font-medium uppercase tracking-wider text-[var(--vault-accent)]">
+          {getVaultCategoryLabel(category)}
+        </span>
+        <span>•</span>
+        <span>Updated {detailDateFormatter.format(note.updatedAt)}</span>
+        {(category === 'note' || category === 'document') && (
+          <>
+            <span>•</span>
+            <span>{wordCount} words ({content.length} chars)</span>
+          </>
+        )}
+      </div>
+
+      {/* Title & Category Selector */}
+      <div className="mb-4 space-y-3">
+        <input
+          className="w-full bg-transparent text-xl font-bold text-[var(--vault-text)] placeholder-[var(--vault-subtext)] outline-none"
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Item Title..."
+          type="text"
+          value={title}
+        />
+
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {VAULT_CATEGORIES.map((cat) => (
             <button
-              className="sv-btn-primary py-2.5 text-sm"
-              disabled={!isDirty || isSaving}
-              type="submit"
+              key={cat}
+              className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
+                category === cat
+                  ? 'bg-[var(--vault-accent)] text-white shadow-md'
+                  : 'bg-[var(--vault-card-bg)] text-[var(--vault-subtext)] hover:text-[var(--vault-text)]'
+              }`}
+              onClick={() => setCategory(cat)}
+              type="button"
             >
-              {isSaving ? 'Saving...' : 'Save'}
+              {getVaultCategoryLabel(cat)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Category-Specific Production Interfaces */}
+      {category === 'password' ? (
+        <div className="mb-4 space-y-4 sv-card p-4">
+          <div className="flex items-center justify-between border-b border-[var(--vault-border)] pb-2">
+            <span className="text-xs font-semibold text-[var(--vault-text)]">Password Credential</span>
+            <button
+              className="text-xs text-[var(--vault-accent)] font-medium hover:underline"
+              onClick={handleGeneratePassword}
+              type="button"
+            >
+              Generate Strong Password
             </button>
           </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--vault-subtext)]">
+              Password Secret / Token
+            </label>
+            <div className="relative flex items-center">
+              <input
+                className="w-full rounded-lg bg-[var(--vault-bg)] border border-[var(--vault-border)] px-3 py-2.5 pr-20 text-sm font-mono text-[var(--vault-text)] outline-none focus:border-[var(--vault-accent)]"
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Enter password..."
+                type={showPassword ? 'text' : 'password'}
+                value={content}
+              />
+              <div className="absolute right-2 flex items-center gap-1">
+                <button
+                  className="p-1 text-[var(--vault-subtext)] hover:text-[var(--vault-text)]"
+                  onClick={() => setShowPassword(!showPassword)}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    {showPassword ? 'visibility_off' : 'visibility'}
+                  </span>
+                </button>
+                <button
+                  className="p-1 text-[var(--vault-accent)] hover:opacity-80"
+                  onClick={() => void handleCopySecret(content, 'Password')}
+                  title="Copy password to clipboard"
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-lg">content_copy</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {passwordStrength && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--vault-subtext)]">Security Strength</span>
+                <span className="font-semibold" style={{ color: passwordStrength.color }}>
+                  {passwordStrength.label}
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-[var(--vault-bg)] overflow-hidden">
+                <div
+                  className="h-full transition-all duration-300"
+                  style={{
+                    width: `${(passwordStrength.score / 5) * 100}%`,
+                    backgroundColor: passwordStrength.color,
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
-      </form>
-    </section>
+      ) : category === 'card' ? (
+        <div className="mb-4 space-y-4 sv-card p-4">
+          <div className="flex items-center justify-between border-b border-[var(--vault-border)] pb-2">
+            <span className="text-xs font-semibold text-[var(--vault-text)]">Payment Card Details</span>
+            <span className="material-symbols-outlined text-xl text-[var(--vault-accent)]">credit_card</span>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--vault-subtext)]">
+              Cardholder & Number Data
+            </label>
+            <div className="relative flex items-center">
+              <textarea
+                className="w-full rounded-lg bg-[var(--vault-bg)] border border-[var(--vault-border)] p-3 text-sm font-mono text-[var(--vault-text)] outline-none focus:border-[var(--vault-accent)]"
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Cardholder Name, Number, Expiry, CVV..."
+                rows={3}
+                value={content}
+              />
+              <button
+                className="absolute right-2 top-2 p-1 text-[var(--vault-accent)] hover:opacity-80"
+                onClick={() => void handleCopySecret(content, 'Card Details')}
+                title="Copy Card details"
+                type="button"
+              >
+                <span className="material-symbols-outlined text-lg">content_copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 space-y-2">
+          <div className="flex justify-end gap-2">
+            <button
+              className={`text-xs px-2.5 py-1 rounded-md font-medium ${
+                !isPreviewMode ? 'bg-[var(--vault-card-bg)] text-[var(--vault-text)]' : 'text-[var(--vault-subtext)]'
+              }`}
+              onClick={() => setIsPreviewMode(false)}
+              type="button"
+            >
+              Write
+            </button>
+            <button
+              className={`text-xs px-2.5 py-1 rounded-md font-medium ${
+                isPreviewMode ? 'bg-[var(--vault-card-bg)] text-[var(--vault-text)]' : 'text-[var(--vault-subtext)]'
+              }`}
+              onClick={() => setIsPreviewMode(true)}
+              type="button"
+            >
+              Preview
+            </button>
+          </div>
+
+          {!isPreviewMode ? (
+            <textarea
+              className="w-full min-h-[220px] resize-y rounded-xl bg-[var(--vault-card-bg)] border border-[var(--vault-border)] p-3.5 text-sm text-[var(--vault-text)] outline-none focus:border-[var(--vault-accent)] font-sans leading-relaxed"
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Write encrypted notes or thoughts..."
+              value={content}
+            />
+          ) : (
+            <div className="min-h-[220px] rounded-xl bg-[var(--vault-card-bg)] border border-[var(--vault-border)] p-3.5 text-sm text-[var(--vault-text)] whitespace-pre-wrap font-sans leading-relaxed">
+              {content || <span className="text-[var(--vault-subtext)] italic">Empty entry content.</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tags Input */}
+      <div className="mb-4">
+        <label className="mb-1 block text-[11px] font-medium text-[var(--vault-subtext)]">
+          Tags (comma separated)
+        </label>
+        <input
+          className="w-full rounded-lg bg-[var(--vault-card-bg)] border border-[var(--vault-border)] px-3 py-2 text-xs text-[var(--vault-text)] outline-none focus:border-[var(--vault-accent)]"
+          onChange={(e) => setTagInput(e.target.value)}
+          placeholder="work, ideas, crypto..."
+          type="text"
+          value={tagInput}
+        />
+      </div>
+
+      {/* AI Summary Section */}
+      {summaryPoints.length > 0 && (
+        <div className="sv-card p-4 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--vault-accent)]">
+            <span className="material-symbols-outlined text-sm">auto_awesome</span>
+            <span>AI Bullet Summary</span>
+          </div>
+          <ul className="space-y-1 pl-4 text-xs text-[var(--vault-subtext)] list-disc">
+            {summaryPoints.map((point, i) => (
+              <li key={i}>{point}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }

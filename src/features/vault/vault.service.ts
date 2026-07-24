@@ -1,7 +1,9 @@
 import {
   decryptJsonPayload,
+  deriveWrappingKeyFromPin,
   deriveWrappingKeyFromPrfSecret,
   encryptJsonPayload,
+  generateSalt,
   generateVaultKey,
   unwrapVaultKey,
   wrapVaultKey,
@@ -46,8 +48,13 @@ export interface ListVaultItemsOptions {
   offset?: number
 }
 
+const MAX_TITLE_LENGTH = 256
+const MAX_TAG_LENGTH = 64
+const MAX_TAGS_COUNT = 50
+const MAX_CONTENT_LENGTH = 5 * 1024 * 1024 // 5 MB max per item
+
 const normalizeTitle = (title: string): string => {
-  const nextTitle = title.trim()
+  const nextTitle = title.trim().slice(0, MAX_TITLE_LENGTH)
   return nextTitle.length > 0 ? nextTitle : UNTITLED_LABEL
 }
 
@@ -55,10 +62,13 @@ const normalizeTags = (tags: string[]): string[] => {
   const unique = new Set<string>()
 
   for (const rawTag of tags) {
-    const tag = rawTag.trim().toLowerCase()
+    const tag = rawTag.trim().toLowerCase().slice(0, MAX_TAG_LENGTH)
 
     if (tag.length > 0) {
       unique.add(tag)
+      if (unique.size >= MAX_TAGS_COUNT) {
+        break
+      }
     }
   }
 
@@ -66,10 +76,15 @@ const normalizeTags = (tags: string[]): string[] => {
 }
 
 const normalizeDraft = (draft: Partial<VaultItemDraft> = {}): VaultPayload => {
+  const rawContent = draft.content ?? ''
+  const sanitizedContent = rawContent.length > MAX_CONTENT_LENGTH 
+    ? rawContent.slice(0, MAX_CONTENT_LENGTH) 
+    : rawContent
+
   return {
     category: normalizeVaultCategory(draft.category),
     title: normalizeTitle(draft.title ?? ''),
-    content: draft.content?.trim() ?? '',
+    content: sanitizedContent.trim(),
     tags: normalizeTags(draft.tags ?? []),
   }
 }
@@ -139,14 +154,13 @@ const isLegacyPlaintextRecord = (item: VaultEncryptedItem): boolean => {
   )
 }
 
-const isPasskeySecretRecord = (record: unknown): record is VaultSecretRecord => {
+const isVaultSecretRecord = (record: unknown): record is VaultSecretRecord => {
   if (!isRecordObject(record)) {
     return false
   }
 
   return (
     typeof record.id === 'string' &&
-    isByteSource(record.credentialId) &&
     isByteSource(record.wrapSalt) &&
     isByteSource(record.wrappedVaultKey) &&
     isByteSource(record.wrappedVaultKeyIv) &&
@@ -154,6 +168,10 @@ const isPasskeySecretRecord = (record: unknown): record is VaultSecretRecord => 
     typeof record.createdAt === 'number' &&
     typeof record.updatedAt === 'number'
   )
+}
+
+const isPasskeySecretRecord = (record: unknown): record is VaultSecretRecord => {
+  return isVaultSecretRecord(record) && record.authMode !== 'pin' && isByteSource(record.credentialId)
 }
 
 const isLegacySecretRecord = (
@@ -262,6 +280,82 @@ export async function isPasskeyProtectionEnabled(): Promise<boolean> {
   return isPasskeySecretRecord(record)
 }
 
+export async function isVaultProtectionEnabled(): Promise<boolean> {
+  const record = await getStoredSecretRecord()
+  return isVaultSecretRecord(record)
+}
+
+export async function getVaultAuthMode(): Promise<'passkey' | 'pin' | 'none'> {
+  const record = await getStoredSecretRecord()
+  if (!isVaultSecretRecord(record)) {
+    return 'none'
+  }
+  return record.authMode === 'pin' ? 'pin' : 'passkey'
+}
+
+export async function setupPinProtection(pin: string): Promise<CryptoKey> {
+  if (!pin || pin.length < 4) {
+    throw new Error('PIN must be at least 4 digits.')
+  }
+
+  const existingRecord = await getStoredSecretRecord()
+  const salt = generateSalt(32)
+  const wrappingKey = await deriveWrappingKeyFromPin(pin, salt)
+
+  let activeVaultKey: CryptoKey
+  const now = Date.now()
+  const createdAtFromExisting =
+    isLegacySecretRecord(existingRecord) &&
+    typeof existingRecord.createdAt === 'number'
+      ? existingRecord.createdAt
+      : now
+
+  if (isLegacySecretRecord(existingRecord)) {
+    if (existingRecord.key.extractable) {
+      activeVaultKey = existingRecord.key
+    } else {
+      activeVaultKey = await generateVaultKey()
+      await rotateVaultEncryptionKey(existingRecord.key, activeVaultKey)
+    }
+  } else {
+    activeVaultKey = await generateVaultKey()
+  }
+
+  const wrappedVaultKey = await wrapVaultKey(activeVaultKey, wrappingKey)
+
+  await db.vaultSecrets.put({
+    id: PRIMARY_SECRET_ID,
+    authMode: 'pin',
+    wrapSalt: salt,
+    wrappedVaultKey: wrappedVaultKey.wrappedVaultKey,
+    wrappedVaultKeyIv: wrappedVaultKey.wrappedVaultKeyIv,
+    keyVersion: VAULT_KEY_VERSION,
+    createdAt: createdAtFromExisting,
+    updatedAt: now,
+  })
+
+  return activeVaultKey
+}
+
+export async function unlockVaultWithPin(pin: string): Promise<CryptoKey> {
+  const storedRecord = await getStoredSecretRecord()
+
+  if (!isVaultSecretRecord(storedRecord)) {
+    throw new Error('Vault is not configured with a passcode.')
+  }
+
+  const wrappingKey = await deriveWrappingKeyFromPin(
+    pin,
+    toUint8Array(storedRecord.wrapSalt),
+  )
+
+  return unwrapVaultKey(
+    toUint8Array(storedRecord.wrappedVaultKey),
+    toUint8Array(storedRecord.wrappedVaultKeyIv),
+    wrappingKey,
+  )
+}
+
 export async function setupPasskeyProtection(
   displayName = 'Vault Owner',
 ): Promise<CryptoKey> {
@@ -300,6 +394,7 @@ export async function setupPasskeyProtection(
 
   await db.vaultSecrets.put({
     id: PRIMARY_SECRET_ID,
+    authMode: 'passkey',
     credentialId: passkey.credentialId,
     wrapSalt: passkey.wrapSalt,
     wrappedVaultKey: wrappedVaultKey.wrappedVaultKey,
@@ -315,7 +410,7 @@ export async function setupPasskeyProtection(
 export async function unlockVaultWithPasskey(): Promise<CryptoKey> {
   const storedRecord = await getStoredSecretRecord()
 
-  if (!isPasskeySecretRecord(storedRecord)) {
+  if (!isPasskeySecretRecord(storedRecord) || !storedRecord.credentialId) {
     throw new Error('Vault passkey is not configured.')
   }
 

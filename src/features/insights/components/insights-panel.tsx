@@ -16,16 +16,16 @@ export function InsightsPanel({
 }: InsightsPanelProps) {
   return (
     <section className="sv-screen">
-      {/* Header - EXACTLY 56px */}
+      {/* Header - Universal 56px Bar */}
       <header className="sv-sticky">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <span className="material-symbols-outlined text-2xl text-[var(--accent)]">
               analytics
             </span>
             <h1 className="sv-title">Insights</h1>
           </div>
-          <button className="sv-icon-btn" onClick={onRefresh}>
+          <button className="sv-icon-btn" onClick={onRefresh} title="Refresh Insights" type="button">
             <span className="material-symbols-outlined">refresh</span>
           </button>
         </div>
