@@ -4,7 +4,7 @@ import type {
   VaultEmbeddingRecord,
   VaultEncryptedItem,
   VaultSecretRecord,
-} from '../features/vault/types'
+} from '../types/vault'
 
 class VaultDatabase extends Dexie {
   vaultItems!: Table<VaultEncryptedItem, string>

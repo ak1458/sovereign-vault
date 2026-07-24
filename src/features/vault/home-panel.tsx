@@ -1,5 +1,5 @@
-import type { VaultCategory } from '../../../core/vault-category'
-import type { VaultItem } from '../types'
+import type { VaultCategory } from '../../core/types/category'
+import type { VaultItem } from '../../core/types/vault'
 
 type ThemeMode = 'light' | 'dark'
 

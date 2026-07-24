@@ -1,4 +1,4 @@
-import { getVaultCategoryLabel } from '../../../core/vault-category'
+import { getVaultCategoryLabel } from '../../../core/types/category'
 import type { VaultInsights } from '../insights.service'
 
 interface InsightsPanelProps {

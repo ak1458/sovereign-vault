@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { triggerHapticFeedback } from '../../../lib/haptics'
+import { triggerHapticFeedback } from '../../core/utils/haptics'
 
 interface AuthScreenProps {
   title: string

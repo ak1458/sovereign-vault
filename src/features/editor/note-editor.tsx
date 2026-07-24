@@ -8,14 +8,14 @@ import {
   VAULT_CATEGORIES,
   getVaultCategoryLabel,
   type VaultCategory,
-} from '../../../core/vault-category'
-import { copySecureToClipboard } from '../../../lib/clipboard'
+} from '../../core/types/category'
+import { copySecureToClipboard } from '../../core/utils/clipboard'
 
 import {
   evaluatePasswordStrength,
   generateSecurePassword,
-} from '../../../lib/password-generator'
-import type { VaultItem, VaultItemDraft } from '../types'
+} from '../../core/crypto/password-generator'
+import type { VaultItem, VaultItemDraft } from '../../core/types/vault'
 
 const detailDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',

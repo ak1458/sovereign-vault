@@ -1,10 +1,10 @@
-import { db } from '../../lib/db'
+import { db } from '../../core/database/db'
 import type {
   VaultBackupSnapshotRecord,
   VaultEmbeddingRecord,
   VaultEncryptedItem,
   VaultSecretRecord,
-} from '../vault/types'
+} from '../../core/types/vault'
 import { migrateLegacyPlaintextNotes } from '../vault/vault.service'
 
 const BACKUP_FORMAT = 'sovereign-vault-backup'

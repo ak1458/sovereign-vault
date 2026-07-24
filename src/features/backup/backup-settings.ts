@@ -1,4 +1,4 @@
-import { loadJsonObject, persistJsonObject } from '../../storage/browser-json-store'
+import { loadJsonObject, persistJsonObject } from '../../core/storage/browser-json-store'
 
 export interface BackupSettings {
   autoSnapshotEnabled: boolean

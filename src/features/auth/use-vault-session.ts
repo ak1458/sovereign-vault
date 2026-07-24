@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isPasskeySupported } from '../../../lib/passkey'
+import { isPasskeySupported } from '../../core/crypto/passkey'
 import {
   getVaultAuthMode,
   isVaultProtectionEnabled,
@@ -7,7 +7,7 @@ import {
   setupPinProtection,
   unlockVaultWithPasskey,
   unlockVaultWithPin,
-} from '../vault.service'
+} from '../vault/vault.service'
 
 const AUTO_LOCK_TIMEOUT_MS = 3 * 60 * 1000
 

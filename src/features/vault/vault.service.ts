@@ -7,22 +7,22 @@ import {
   generateVaultKey,
   unwrapVaultKey,
   wrapVaultKey,
-} from '../../lib/crypto'
-import { getPasskeyPrfSecret, registerPlatformPasskey } from '../../lib/passkey'
-import { db } from '../../lib/db'
+} from '../../core/crypto/crypto'
+import { getPasskeyPrfSecret, registerPlatformPasskey } from '../../core/crypto/passkey'
+import { db } from '../../core/database/db'
 import { cosineSimilarity } from '../ai/vector'
 import {
   DEFAULT_VAULT_CATEGORY,
   normalizeVaultCategory,
   type VaultCategory,
-} from '../../core/vault-category'
+} from '../../core/types/category'
 import type {
   VaultEmbeddingRecord,
   VaultEncryptedItem,
   VaultItem,
   VaultItemDraft,
   VaultSecretRecord,
-} from './types'
+} from '../../core/types/vault'
 
 const UNTITLED_LABEL = 'Untitled'
 const PRIMARY_SECRET_ID = 'primary'

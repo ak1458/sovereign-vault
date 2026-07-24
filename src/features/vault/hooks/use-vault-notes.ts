@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { VaultCategory } from '../../../core/vault-category'
-import { useDebouncedValue } from '../../../lib/use-debounced-value'
+import type { VaultCategory } from '../../../core/types/category'
+import { useDebouncedValue } from '../../../core/utils/use-debounced-value'
 import { aiService } from '../../ai/ai.service'
 import type { AiSettings } from '../../ai/ai-settings'
-import type { VaultItem } from '../types'
+import type { VaultItem } from '../../../core/types/vault'
 import {
   listVaultItems,
   listVaultItemsCount,

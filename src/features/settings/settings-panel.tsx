@@ -1,6 +1,6 @@
 import type { ChangeEvent, RefObject } from 'react'
-import type { BackupSnapshotSummary } from '../../backup/backup.service'
-import { db } from '../../../lib/db'
+import type { BackupSnapshotSummary } from '../backup/backup.service'
+import { db } from '../../core/database/db'
 
 type ThemeMode = 'light' | 'dark'
 

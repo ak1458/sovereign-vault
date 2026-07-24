@@ -3,8 +3,8 @@ import {
   VAULT_CATEGORIES,
   getVaultCategoryLabel,
   type VaultCategory,
-} from '../../../core/vault-category'
-import type { VaultItem } from '../types'
+} from '../../core/types/category'
+import type { VaultItem } from '../../core/types/vault'
 
 const noteDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',

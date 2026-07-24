@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { aiService } from '../ai.service'
 import type { AiSettings } from '../ai-settings'
-import type { VaultItem } from '../../vault/types'
+import type { VaultItem } from '../../../core/types/vault'
 
 interface AiPanelProps {
   settings: AiSettings

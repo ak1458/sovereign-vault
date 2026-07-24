@@ -1,4 +1,4 @@
-import type { VaultCategory } from '../../core/vault-category'
+import type { VaultCategory } from './category'
 
 export interface VaultItem {
   id: string

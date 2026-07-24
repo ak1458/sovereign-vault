@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { generateVaultKey } from '../../lib/crypto'
-import { db } from '../../lib/db'
+import { generateVaultKey } from '../../core/crypto/crypto'
+import { db } from '../../core/database/db'
 import { createVaultItem, listVaultItems } from '../vault/vault.service'
 import {
   createBackupSnapshot,

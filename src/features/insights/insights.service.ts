@@ -1,6 +1,6 @@
-import { getVaultCategoryLabel } from '../../core/vault-category'
-import type { VaultCategory } from '../../core/vault-category'
-import type { VaultItem } from '../vault/types'
+import { getVaultCategoryLabel } from '../../core/types/category'
+import type { VaultCategory } from '../../core/types/category'
+import type { VaultItem } from '../../core/types/vault'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEK_DAYS = 7

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { VaultItem } from '../vault/types'
+import type { VaultItem } from '../../core/types/vault'
 import { buildVaultInsights } from './insights.service'
 
 const NOW = new Date('2026-02-18T12:00:00Z').getTime()
