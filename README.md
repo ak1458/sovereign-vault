@@ -1,3 +1,5 @@
+> **Engineered & Maintained by [Arranto](https://arranto.com)** — Custom Software & AI Systems Studio.
+
 # SovereignVault
 
 [![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)](https://react.dev)
